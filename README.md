@@ -16,6 +16,10 @@ npm run setup     # tạo bảng và dữ liệu mẫu (chạy lại khi schema 
 npm start         # mở http://localhost:3000
 ```
 
+Muốn trang Admin có sẵn số liệu để xem và chụp ảnh: `npm run seed:demo` (chạy một lần).
+
+Trang quản trị: `http://localhost:3000/admin/` (đăng nhập `admin@rewear.vn / admin123`).
+
 Tài khoản mẫu: `admin@rewear.vn / admin123`, `shop@rewear.vn / 123456`, `buyer@rewear.vn / 123456`.
 
 Để demo nhanh luồng giải ngân tự động, đặt `HOLD_HOURS=0.01` trong `.env` (khoảng 36 giây thay vì 48 giờ).
@@ -31,7 +35,10 @@ src/
   middlewares/               auth.js (đăng nhập, phân quyền), upload.js (tải ảnh)
   services/orderService.js   getOrder, release (giải ngân), refund (hoàn tiền)
   jobs/autoRelease.js        tự động giải ngân khi hết hạn khiếu nại
-  routes/                    auth, product, shop, order, wallet, admin (+ index.js gom lại)
+  routes/                    auth, public, product, shop, order, wallet (+ index.js gom lại)
+  routes/admin/              dashboard, products, orders, users, categories, promotions, disputes, reports, settings
+public/admin/                giao diện quản trị riêng (index.html, admin.css, admin.js)
+seed-demo.js                 dữ liệu mẫu cho trang Admin
 ```
 
 Thêm API mới: tạo file `src/routes/ten.routes.js`, rồi khai báo trong `src/routes/index.js`.
@@ -49,6 +56,9 @@ Thêm API mới: tạo file `src/routes/ten.routes.js`, rồi khai báo trong `s
 | Tự động giải ngân khi hết hạn khiếu nại | `jobs/autoRelease.js` |
 | Đánh giá và uy tín người bán | `review`, `/api/shops/:id` |
 | Ví và rút tiền | `/api/wallet` |
+| Phí hoa hồng, thời hạn giữ tiền, số ảnh tối thiểu, từ khóa cấm | Admin, trang Cài đặt (`services/settings.js`) |
+| Mã giảm giá, chương trình sale | Admin, trang Khuyến mãi (`services/pricing.js`) |
+| Khóa tài khoản, xác minh shop | Admin, trang Khách hàng và Người bán |
 
 Luồng đơn: `PENDING_PAYMENT, PAID, SHIPPED, RECEIVED, COMPLETED`, nhánh phụ `DISPUTED, REFUNDED, CANCELLED`.
 

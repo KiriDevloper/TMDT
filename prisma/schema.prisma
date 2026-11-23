@@ -14,6 +14,8 @@ model User {
   password  String
   role      String   @default("user") // user | admin
   wallet    Int      @default(0)
+  status    String   @default("active")  // active | banned
+  shopStatus String  @default("pending") // pending | verified | rejected (xác minh shop)
   createdAt DateTime @default(now())
   products  Product[]
   buys      Order[]  @relation("buyer")
@@ -59,6 +61,8 @@ model Order {
   commission Int
   address    String
   status     String   @default("PENDING_PAYMENT")
+  discount   Int      @default(0)
+  couponCode String?
   receivedAt DateTime?
   createdAt  DateTime @default(now())
   items      OrderItem[]
@@ -94,6 +98,7 @@ model Dispute {
   reason    String
   status    String   @default("OPEN") // OPEN | RESOLVED
   decision  String?  // REFUND | RELEASE
+  note      String?
   createdAt DateTime @default(now())
 }
 
@@ -108,4 +113,40 @@ model Review {
   rating    Int
   comment   String   @default("")
   createdAt DateTime @default(now())
+}
+
+model Category {
+  id     Int     @id @default(autoincrement())
+  key    String  @unique
+  name   String
+  active Boolean @default(true)
+}
+
+model Coupon {
+  id        Int       @id @default(autoincrement())
+  code      String    @unique
+  type      String    // percent | fixed
+  value     Int
+  minOrder  Int       @default(0)
+  maxUses   Int       @default(0) // 0 = không giới hạn
+  used      Int       @default(0)
+  startsAt  DateTime?
+  endsAt    DateTime?
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+}
+
+model Sale {
+  id       Int      @id @default(autoincrement())
+  name     String
+  percent  Int
+  category String?  // null = tất cả danh mục
+  startsAt DateTime
+  endsAt   DateTime
+  active   Boolean  @default(true)
+}
+
+model Setting {
+  key   String @id
+  value String
 }

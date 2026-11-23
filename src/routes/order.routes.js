@@ -1,29 +1,37 @@
 const router = require('express').Router();
 const db = require('../db');
 const auth = require('../middlewares/auth');
-const { COMMISSION, HOLD_MS } = require('../config');
 const { bad, wrap } = require('../utils');
 const { getOrder, productIds } = require('../services/orderService');
+const { getSettings } = require('../services/settings');
+const { activeSales, withSale, checkCoupon } = require('../services/pricing');
 
-// Tạo đơn: tách theo người bán, sản phẩm chuyển sang RESERVED
+// Tạo đơn: áp dụng giá sale + mã giảm giá, tách đơn theo người bán, sản phẩm chuyển sang RESERVED
 router.post('/orders', auth(), wrap(async (q, s) => {
   const ids = [...new Set((q.body.productIds || []).map(Number))], address = (q.body.address || '').trim();
   if (!ids.length || !address) throw bad('Cần có sản phẩm và địa chỉ nhận hàng');
   const ps = await db.product.findMany({ where: { id: { in: ids }, status: 'APPROVED' } });
   if (ps.length !== ids.length) throw bad('Có sản phẩm đã được bán hoặc không còn hiển thị');
   if (ps.some(p => p.sellerId === q.user.id)) throw bad('Không thể mua sản phẩm của chính mình');
+  const [st, sales] = [await getSettings(), await activeSales()];
+  const priced = ps.map(p => { const x = withSale(p, sales); return { ...p, eff: x.salePrice ?? p.price }; });
+  const grand = priced.reduce((a, p) => a + p.eff, 0);
+  let discount = 0, coupon = null;
+  if (q.body.couponCode) ({ coupon, discount } = await checkCoupon(q.body.couponCode, grand));
   const by = {};
-  ps.forEach(p => (by[p.sellerId] ??= []).push(p));
+  priced.forEach(p => (by[p.sellerId] ??= []).push(p));
   const orderIds = [];
   for (const sid in by) {
-    const items = by[sid], total = items.reduce((a, p) => a + p.price, 0);
+    const items = by[sid], sub = items.reduce((a, p) => a + p.eff, 0);
+    const share = grand ? Math.round(discount * sub / grand) : 0, total = sub - share;
     const o = await db.$transaction(async tx => {
-      const o = await tx.order.create({ data: { buyerId: q.user.id, sellerId: +sid, total, commission: Math.round(total * COMMISSION), address, items: { create: items.map(p => ({ productId: p.id, price: p.price })) } } });
+      const o = await tx.order.create({ data: { buyerId: q.user.id, sellerId: +sid, total, discount: share, couponCode: coupon?.code, commission: Math.round(total * st.commission / 100), address, items: { create: items.map(p => ({ productId: p.id, price: p.eff })) } } });
       await tx.product.updateMany({ where: { id: { in: items.map(p => p.id) } }, data: { status: 'RESERVED' } });
       return o;
     });
     orderIds.push(o.id);
   }
+  if (coupon) await db.coupon.update({ where: { id: coupon.id }, data: { used: { increment: 1 } } });
   s.json({ orderIds });
 }));
 
@@ -53,7 +61,8 @@ step('cancel', 'buyer', ['PENDING_PAYMENT'], async o => {
 step('ship', 'seller', ['PAID'], o => db.order.update({ where: { id: o.id }, data: { status: 'SHIPPED' } }));
 step('receive', 'buyer', ['SHIPPED'], o => db.order.update({ where: { id: o.id }, data: { status: 'RECEIVED', receivedAt: new Date() } }));
 step('dispute', 'buyer', ['RECEIVED'], async (o, q) => {
-  if (Date.now() - o.receivedAt > HOLD_MS) throw bad('Đã quá thời hạn khiếu nại');
+  const st = await getSettings();
+  if (Date.now() - o.receivedAt > st.holdHours * 3600e3) throw bad('Đã quá thời hạn khiếu nại');
   if (!(q.body.reason || '').trim()) throw bad('Cần nêu lý do khiếu nại (hàng sai mô tả, có lỗi không nêu, hàng giả...)');
   await db.$transaction([
     db.dispute.create({ data: { orderId: o.id, reason: q.body.reason } }),

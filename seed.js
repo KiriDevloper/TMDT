@@ -6,7 +6,9 @@ const db = new PrismaClient();
 (async () => {
   const hash = await bcrypt.hash('123456', 10);
   await db.user.upsert({ where: { email: 'admin@rewear.vn' }, update: {}, create: { name: 'Admin', email: 'admin@rewear.vn', password: await bcrypt.hash('admin123', 10), role: 'admin' } });
-  const seller = await db.user.upsert({ where: { email: 'shop@rewear.vn' }, update: {}, create: { name: 'Vintage Shop', email: 'shop@rewear.vn', password: hash } });
+  const seller = await db.user.upsert({ where: { email: 'shop@rewear.vn' }, update: { shopStatus: 'verified' }, create: { name: 'Vintage Shop', email: 'shop@rewear.vn', password: hash, shopStatus: 'verified' } });
+  for (const [key, name] of [['thun', 'Áo thun'], ['somi', 'Áo sơ mi'], ['jeans', 'Quần jeans'], ['khoac', 'Áo khoác'], ['phukien', 'Phụ kiện'], ['khac', 'Khác']])
+    await db.category.upsert({ where: { key }, update: {}, create: { key, name } });
   await db.user.upsert({ where: { email: 'buyer@rewear.vn' }, update: {}, create: { name: 'Minh Anh', email: 'buyer@rewear.vn', password: hash } });
 
   // Xóa sản phẩm mẫu cũ (không ảnh) nếu chưa có đơn hàng

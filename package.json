@@ -5,6 +5,7 @@
   "main": "server.js",
   "scripts": {
     "setup": "prisma generate && prisma db push && node seed.js",
+    "seed:demo": "node seed-demo.js",
     "start": "node server.js"
   },
   "dependencies": {

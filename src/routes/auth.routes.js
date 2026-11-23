@@ -15,6 +15,7 @@ router.post('/register', wrap(async (q, s) => {
 router.post('/login', wrap(async (q, s) => {
   const u = await db.user.findUnique({ where: { email: q.body.email || '' } });
   if (!u || !(await bcrypt.compare(q.body.password || '', u.password))) throw bad('Sai email hoặc mật khẩu');
+  if (u.status === 'banned') throw bad('Tài khoản đã bị khóa, liên hệ quản trị viên');
   s.json({ token: sign(u), user: pub(u) });
 }));
 
