@@ -1,0 +1,111 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String   @unique
+  password  String
+  role      String   @default("user") // user | admin
+  wallet    Int      @default(0)
+  createdAt DateTime @default(now())
+  products  Product[]
+  buys      Order[]  @relation("buyer")
+  sells     Order[]  @relation("seller")
+  txns      Txn[]
+  reviewsWritten  Review[] @relation("author")
+  reviewsReceived Review[] @relation("target")
+}
+
+model Product {
+  id          Int      @id @default(autoincrement())
+  sellerId    Int
+  seller      User     @relation(fields: [sellerId], references: [id])
+  title       String
+  brand       String
+  size        String
+  measures    String   // so do thuc te: ngực/vai/dài...
+  material    String   @default("")
+  category    String   @default("khac") // thun | somi | jeans | khoac | phukien | khac
+  condition   String   // NEW | GOOD | FAIR | FLAW
+  price       Int
+  description String   @default("")
+  status      String   @default("PENDING") // PENDING | APPROVED | REJECTED | RESERVED | SOLD
+  createdAt   DateTime @default(now())
+  images      Image[]
+  items       OrderItem[]
+}
+
+model Image {
+  id        Int     @id @default(autoincrement())
+  productId Int
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+}
+
+model Order {
+  id         Int      @id @default(autoincrement())
+  buyerId    Int
+  sellerId   Int
+  buyer      User     @relation("buyer", fields: [buyerId], references: [id])
+  seller     User     @relation("seller", fields: [sellerId], references: [id])
+  total      Int
+  commission Int
+  address    String
+  status     String   @default("PENDING_PAYMENT")
+  receivedAt DateTime?
+  createdAt  DateTime @default(now())
+  items      OrderItem[]
+  dispute    Dispute?
+  review     Review?
+  txns       Txn[]
+}
+
+model OrderItem {
+  id        Int     @id @default(autoincrement())
+  orderId   Int
+  order     Order   @relation(fields: [orderId], references: [id])
+  productId Int
+  product   Product @relation(fields: [productId], references: [id])
+  price     Int
+}
+
+model Txn {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  orderId   Int?
+  order     Order?   @relation(fields: [orderId], references: [id])
+  type      String   // HOLD | RELEASE | REFUND | WITHDRAW
+  amount    Int
+  createdAt DateTime @default(now())
+}
+
+model Dispute {
+  id        Int      @id @default(autoincrement())
+  orderId   Int      @unique
+  order     Order    @relation(fields: [orderId], references: [id])
+  reason    String
+  status    String   @default("OPEN") // OPEN | RESOLVED
+  decision  String?  // REFUND | RELEASE
+  createdAt DateTime @default(now())
+}
+
+model Review {
+  id        Int      @id @default(autoincrement())
+  orderId   Int      @unique
+  order     Order    @relation(fields: [orderId], references: [id])
+  authorId  Int
+  author    User     @relation("author", fields: [authorId], references: [id])
+  sellerId  Int
+  seller    User     @relation("target", fields: [sellerId], references: [id])
+  rating    Int
+  comment   String   @default("")
+  createdAt DateTime @default(now())
+}
