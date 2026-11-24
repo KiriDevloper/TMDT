@@ -23,6 +23,10 @@ model User {
   txns      Txn[]
   reviewsWritten  Review[] @relation("author")
   reviewsReceived Review[] @relation("target")
+  msgSent   Message[] @relation("msgFrom")
+  msgRecv   Message[] @relation("msgTo")
+  violations Violation[]
+  consignments Consignment[]
 }
 
 model Product {
@@ -41,7 +45,9 @@ model Product {
   status      String   @default("PENDING") // PENDING | APPROVED | REJECTED | RESERVED | SOLD
   createdAt   DateTime @default(now())
   images      Image[]
+  consigned   Boolean  @default(false) // hàng ký gửi (hoa hồng riêng)
   items       OrderItem[]
+  violations  Violation[]
 }
 
 model Image {
@@ -63,6 +69,11 @@ model Order {
   status     String   @default("PENDING_PAYMENT")
   discount   Int      @default(0)
   couponCode String?
+  carrier    String?  // ghn | ghtk | viettel
+  shippingFee Int     @default(0)
+  trackingCode String?
+  shipDeadline DateTime? // hạn người bán phải gửi hàng
+  shippedAt  DateTime?
   receivedAt DateTime?
   createdAt  DateTime @default(now())
   items      OrderItem[]
@@ -99,6 +110,7 @@ model Dispute {
   status    String   @default("OPEN") // OPEN | RESOLVED
   decision  String?  // REFUND | RELEASE
   note      String?
+  evidence  String   @default("") // đường dẫn ảnh/video, ngăn cách bằng dấu phẩy
   createdAt DateTime @default(now())
 }
 
@@ -149,4 +161,49 @@ model Sale {
 model Setting {
   key   String @id
   value String
+}
+
+model Message {
+  id        Int       @id @default(autoincrement())
+  fromId    Int
+  from      User      @relation("msgFrom", fields: [fromId], references: [id])
+  toId      Int
+  to        User      @relation("msgTo", fields: [toId], references: [id])
+  productId Int?
+  body      String
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+}
+
+model Violation {
+  id         Int      @id @default(autoincrement())
+  productId  Int
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  reporterId Int
+  reporter   User     @relation(fields: [reporterId], references: [id])
+  reason     String
+  status     String   @default("OPEN") // OPEN | RESOLVED
+  createdAt  DateTime @default(now())
+}
+
+model Consignment {
+  id            Int      @id @default(autoincrement())
+  sellerId      Int
+  seller        User     @relation(fields: [sellerId], references: [id])
+  title         String
+  brand         String
+  size          String
+  measures      String
+  category      String
+  condition     String
+  expectedPrice Int
+  description   String   @default("")
+  images        String   @default("")
+  status        String   @default("SUBMITTED") // SUBMITTED | RECEIVED | REJECTED | LISTED | SOLD | EXPIRED | RETURNED
+  productId     Int?
+  finalPrice    Int?
+  adminNote     String?
+  listedAt      DateTime?
+  expiresAt     DateTime?
+  createdAt     DateTime @default(now())
 }

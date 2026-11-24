@@ -6,6 +6,7 @@ const { CONDITIONS } = require('../config');
 const { bad, wrap } = require('../utils');
 const { getSettings, bannedRegex } = require('../services/settings');
 const { activeSales, withSale } = require('../services/pricing');
+const { sellerStats } = require('../services/reputation');
 
 router.get('/products', wrap(async (q, s) => {
   const { q: kw, brand, size, condition, category, min, max, sort } = q.query;
@@ -25,7 +26,7 @@ router.get('/products/:id', wrap(async (q, s) => {
   const p = await db.product.findUnique({ where: { id: +q.params.id }, include: { images: true, seller: { select: { id: true, name: true, shopStatus: true } } } });
   if (!p) return s.status(404).json({ error: 'Không tìm thấy sản phẩm' });
   const r = await db.review.aggregate({ where: { sellerId: p.sellerId }, _avg: { rating: true }, _count: true });
-  s.json({ ...withSale(p, await activeSales()), rating: r._avg.rating, reviews: r._count });
+  s.json({ ...withSale(p, await activeSales()), rating: r._avg.rating, reviews: r._count, sellerStats: await sellerStats(p.sellerId) });
 }));
 
 router.post('/products', auth(), upload.array('images', 8), wrap(async (q, s) => {
@@ -45,6 +46,18 @@ router.post('/products', auth(), upload.array('images', 8), wrap(async (q, s) =>
     images: { create: q.files.map(f => ({ url: '/uploads/' + f.filename })) },
   } });
   s.json(p); // trạng thái PENDING: chờ admin duyệt
+}));
+
+// Người dùng báo cáo tin đăng vi phạm
+router.post('/products/:id/report', auth(), wrap(async (q, s) => {
+  const reason = (q.body.reason || '').trim(), id = +q.params.id;
+  if (!reason) throw bad('Cần nêu lý do báo cáo');
+  const p = await db.product.findUnique({ where: { id } });
+  if (!p) throw bad('Không tìm thấy sản phẩm');
+  if (p.sellerId === q.user.id) throw bad('Không thể báo cáo sản phẩm của chính mình');
+  if (await db.violation.findFirst({ where: { productId: id, reporterId: q.user.id, status: 'OPEN' } })) throw bad('Bạn đã báo cáo tin này, sàn đang xem xét');
+  await db.violation.create({ data: { productId: id, reporterId: q.user.id, reason } });
+  s.json({ ok: true });
 }));
 
 router.get('/my/products', auth(), wrap(async (q, s) =>

@@ -2,6 +2,7 @@ const router = require('express').Router();
 const db = require('../db');
 const { wrap } = require('../utils');
 const { activeSales, withSale } = require('../services/pricing');
+const { sellerStats } = require('../services/reputation');
 
 router.get('/shops/:id', wrap(async (q, s) => {
   const id = +q.params.id;
@@ -12,7 +13,7 @@ router.get('/shops/:id', wrap(async (q, s) => {
     db.review.findMany({ where: { sellerId: id }, include: { author: { select: { name: true } } }, orderBy: { id: 'desc' } }),
   ]);
   const sales = await activeSales();
-  s.json({ user, products: products.map(p => withSale(p, sales)), reviews });
+  s.json({ user, stats: await sellerStats(id), products: products.map(p => withSale(p, sales)), reviews });
 }));
 
 module.exports = router;

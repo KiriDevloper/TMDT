@@ -27,13 +27,18 @@ const day = n => new Date(Date.now() - n * 864e5 - R(0, 80000) * 1e3);
   const status = () => { let r = R(1, 100); for (const [s, w] of W) { if ((r -= w) <= 0) return s; } return 'COMPLETED'; };
   for (let i = 0; i < 70; i++) {
     const p = pick(live), buyer = pick(buyers), st = status(), created = day(R(0, 29)), total = p.price;
-    const o = await db.order.create({ data: { buyerId: buyer.id, sellerId: p.sellerId, total, commission: Math.round(total * 0.1), address: '12 Nguyễn Huệ, Buôn Ma Thuột', status: st, createdAt: created, receivedAt: ['RECEIVED', 'COMPLETED', 'DISPUTED', 'REFUNDED'].includes(st) ? created : null, items: { create: [{ productId: p.id, price: total }] } } });
+    const car = pick([['ghn', 30000], ['ghtk', 22000], ['viettel', 25000]]), shipped = ['SHIPPED', 'RECEIVED', 'COMPLETED', 'DISPUTED', 'REFUNDED'].includes(st);
+    const o = await db.order.create({ data: { buyerId: buyer.id, sellerId: p.sellerId, total, commission: Math.round(total * 0.1), carrier: car[0], shippingFee: car[1], trackingCode: shipped ? car[0].toUpperCase() + R(100000000, 999999999) : null, shipDeadline: st === 'PAID' ? new Date(Date.now() + 2 * 864e5) : null, address: '12 Nguyễn Huệ, Buôn Ma Thuột', status: st, createdAt: created, receivedAt: ['RECEIVED', 'COMPLETED', 'DISPUTED', 'REFUNDED'].includes(st) ? created : null, items: { create: [{ productId: p.id, price: total }] } } });
     if (st === 'DISPUTED') await db.dispute.create({ data: { orderId: o.id, reason: pick(['Áo có vết ố không được nêu trong mô tả', 'Size thực tế nhỏ hơn số đo ghi trên tin đăng', 'Nghi ngờ hàng không chính hãng']) } });
     if (st === 'REFUNDED') await db.dispute.create({ data: { orderId: o.id, reason: 'Hàng sai mô tả', status: 'RESOLVED', decision: 'REFUND', note: 'Đã xác minh ảnh người mua gửi' } });
     if (st === 'COMPLETED' && Math.random() < .6) await db.review.create({ data: { orderId: o.id, authorId: buyer.id, sellerId: p.sellerId, rating: pick([4, 5, 5, 5, 3]), comment: pick(['Hàng đẹp đúng mô tả', 'Đóng gói cẩn thận', 'Shop nhiệt tình']) } });
   }
+  // Báo cáo tin đăng vi phạm và yêu cầu ký gửi mẫu
+  for (const p of live.slice(0, 2)) await db.violation.create({ data: { productId: p.id, reporterId: pick(buyers).id, reason: pick(['Nghi ngờ hàng nhái, logo không giống chính hãng', 'Ảnh lấy từ shop khác, mô tả không đúng sự thật']) } });
+  const cs = [['Áo khoác bomber vintage', 'khoac', 'SUBMITTED'], ['Váy hoa nhí dáng dài', 'khac', 'RECEIVED'], ['Giày da cũ', 'phukien', 'REJECTED']];
+  for (const [title, category, status] of cs) await db.consignment.create({ data: { sellerId: pick(buyers).id, title, brand: 'Zara', size: 'M', measures: 'Ngực 50cm, dài 90cm', category, condition: 'GOOD', expectedPrice: 180000, images: pick(imgs), status, adminNote: status === 'REJECTED' ? 'Đế giày bị mòn nhiều, không đạt chuẩn' : null } });
   const now = Date.now();
   await db.coupon.createMany({ data: [{ code: 'WELCOME10', type: 'percent', value: 10, minOrder: 100000 }, { code: 'GIAM20K', type: 'fixed', value: 20000, minOrder: 150000, maxUses: 100 }] });
   await db.sale.create({ data: { name: 'Sale cuối tuần', percent: 15, category: null, startsAt: new Date(now - 864e5), endsAt: new Date(now + 14 * 864e5) } });
-  console.log('Đã tạo dữ liệu demo: 12 người dùng, 18 sản phẩm, 70 đơn hàng, mã giảm giá WELCOME10 / GIAM20K và chương trình sale 15%.');
+  console.log('Đã tạo dữ liệu demo: 12 người dùng, 18 sản phẩm, 70 đơn hàng, báo cáo vi phạm, yêu cầu ký gửi, mã giảm giá WELCOME10 / GIAM20K và chương trình sale 15%.');
 })().finally(() => db.$disconnect());

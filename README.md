@@ -56,6 +56,13 @@ Thêm API mới: tạo file `src/routes/ten.routes.js`, rồi khai báo trong `s
 | Tự động giải ngân khi hết hạn khiếu nại | `jobs/autoRelease.js` |
 | Đánh giá và uy tín người bán | `review`, `/api/shops/:id` |
 | Ví và rút tiền | `/api/wallet` |
+| Khiếu nại kèm ảnh/video bằng chứng | `order.routes.js` (dispute), `middlewares/upload.js` (evidence) |
+| Hiển thị phí sàn khi đăng bán, ưu đãi người bán mới | `GET /api/fees`, `services/settings.js` (sellerRate), form đăng bán |
+| Chọn đơn vị vận chuyển, phí ship, mã vận đơn, hạn gửi hàng, tự hoàn tiền khi quá hạn | `config.js` (CARRIERS), `order.routes.js`, `jobs/autoRelease.js` |
+| Chat người mua và người bán, cảnh báo giao dịch ngoài sàn | `message.routes.js` |
+| Báo cáo tin đăng vi phạm | `product.routes.js` (report), `admin/violations.js` |
+| Huy hiệu uy tín người bán | `services/reputation.js` |
+| Ký gửi (nhận hàng, đăng bán, hoa hồng riêng, hết hạn) | `consign.routes.js`, `admin/consignments.js`, `jobs/autoRelease.js` |
 | Phí hoa hồng, thời hạn giữ tiền, số ảnh tối thiểu, từ khóa cấm | Admin, trang Cài đặt (`services/settings.js`) |
 | Mã giảm giá, chương trình sale | Admin, trang Khuyến mãi (`services/pricing.js`) |
 | Khóa tài khoản, xác minh shop | Admin, trang Khách hàng và Người bán |
@@ -65,5 +72,5 @@ Luồng đơn: `PENDING_PAYMENT, PAID, SHIPPED, RECEIVED, COMPLETED`, nhánh ph�
 ## Giới hạn của bản này
 
 - Thanh toán và giữ tiền là **mô phỏng** trong CSDL. Triển khai thật cần cổng thanh toán có sandbox (VNPay, PayOS) và đơn vị trung gian thanh toán có giấy phép.
-- Chưa có: chat thời gian thực, quy trình ký gửi, tích hợp API vận chuyển (GHN/GHTK), gợi ý sản phẩm, gói gian hàng.
+- Chưa có: tích hợp API vận chuyển thật (phí ship và mã vận đơn đang mô phỏng), thanh toán nhiều phương thức, gợi ý sản phẩm, gói gian hàng, kiểm định hàng hiệu, điểm thưởng, thông báo email. Chat dùng cơ chế tải lại mỗi 5 giây, chưa phải WebSocket.
 - Trước khi đưa lên mạng: đặt `JWT_SECRET` mạnh, thêm giới hạn số lần gọi API (rate limit), HTTPS.

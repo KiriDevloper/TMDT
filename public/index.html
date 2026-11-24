@@ -71,6 +71,7 @@ header{background:var(--bg);border-bottom:1px solid var(--line);position:sticky;
 .foot{text-align:center;font-size:.8rem;color:var(--mut);padding:14px}
 .filters{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}
 @media(max-width:820px){.filters{grid-template-columns:repeat(2,1fr)}}
+dialog{border:0;border-radius:16px;padding:20px;width:min(520px,94vw);box-shadow:0 24px 60px rgba(0,0,0,.25)}dialog::backdrop{background:rgba(20,40,25,.45)}
 </style>
 </head>
 <body>
@@ -100,8 +101,10 @@ header{background:var(--bg);border-bottom:1px solid var(--line);position:sticky;
   </div>
 </header>
 <main id="app"></main>
+<dialog id="dlg"><form id="dlg-f"><div id="dlg-b"></div></form></dialog>
 <script>
 const $ = s => document.querySelector(s);
+const dt = d => new Date(d).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 const vnd = n => Number(n).toLocaleString('vi-VN') + 'đ';
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const ST = {PENDING_PAYMENT:'Chờ thanh toán',PAID:'Đã thanh toán, sàn đang giữ tiền',SHIPPED:'Đang giao',RECEIVED:'Đã nhận, chờ hết hạn khiếu nại',DISPUTED:'Đang khiếu nại',COMPLETED:'Hoàn tất',REFUNDED:'Đã hoàn tiền',CANCELLED:'Đã hủy'};
@@ -130,9 +133,10 @@ const logout = () => { delete localStorage.t; token = me = null; location.hash =
 function header() {
   const n = cart().length; $('#cartN').textContent = n; $('#cartN').style.display = n ? 'grid' : 'none';
   $('#acct').innerHTML = me
-    ? `<button type="button" aria-label="Tài khoản"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3.2"/><path d="M6 19c1.5-3 4-4 6-4s4.5 1 6 4"/></svg></button><div class="dd-m"><div class="px-3 py-2 text-sm"><b>${esc(me.name)}</b><div class="text-xs" style="color:var(--mut)">Ví: ${vnd(me.wallet)}</div></div><a href="#/sell">Đăng bán sản phẩm</a><a href="#/orders">Đơn hàng</a><a href="#/wallet">Ví của tôi</a>${me.role === 'admin' ? '<a href="/admin/">Trang quản trị</a>' : ''}<button onclick="logout()">Đăng xuất</button></div>`
+    ? `<button type="button" aria-label="Tài khoản"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3.2"/><path d="M6 19c1.5-3 4-4 6-4s4.5 1 6 4"/></svg></button><div class="dd-m"><div class="px-3 py-2 text-sm"><b>${esc(me.name)}</b><div class="text-xs" style="color:var(--mut)">Ví: ${vnd(me.wallet)}</div></div><a href="#/sell">Đăng bán sản phẩm</a><a href="#/consign">Ký gửi hàng</a><a href="#/orders">Đơn hàng</a><a href="#/chat">Tin nhắn<span id="unreadN"></span></a><a href="#/wallet">Ví của tôi</a>${me.role === 'admin' ? '<a href="/admin/">Trang quản trị</a>' : ''}<button onclick="logout()">Đăng xuất</button></div>`
     : `<a href="#/login" aria-label="Đăng nhập"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3.2"/><path d="M6 19c1.5-3 4-4 6-4s4.5 1 6 4"/></svg></a>`;
   $('#m-home').className = (location.hash || '#/') === '#/' ? 'on' : '';
+  if (me) api('/messages/unread').then(r => { const el = $('#unreadN'); if (el) el.textContent = r.count ? ` (${r.count})` : ''; }).catch(() => {});
 }
 $('#hs').onsubmit = e => { e.preventDefault(); const q = e.target.q.value.trim(); location.hash = '#/browse' + (q ? '?q=' + encodeURIComponent(q) : ''); };
 
@@ -195,31 +199,38 @@ async function how() {
 }
 
 /* ---------- Sản phẩm, giỏ hàng ---------- */
+const TIER = { gold: ['#fff1c9', '#8a5a00'], trusted: ['#dcefd6', '#24602f'], active: ['#dbe8fb', '#1e56a8'], new: ['#ebe7df', '#6b6659'] };
+const sellerLine = st => `<span class="tag" style="background:${TIER[st.tier][0]};color:${TIER[st.tier][1]}">${esc(st.label)}</span> ${st.verified ? '<span class="tag">Shop đã xác minh</span>' : ''} <span class="text-xs" style="color:var(--mut)">${st.completed} đơn hoàn tất${st.reviews ? `, ${st.rating.toFixed(1)}/5 sao (${st.reviews} đánh giá)` : ', chưa có đánh giá'}</span>`;
 async function product(id) {
-  const p = await api('/products/' + id), inCart = cart().includes(p.id);
+  const p = await api('/products/' + id), inCart = cart().includes(p.id), mine = me && me.id === p.seller.id;
   $('#app').innerHTML = page(`<div class="grid md:grid-cols-2 gap-8"><div class="grid grid-cols-2 gap-2">${p.images.map(i => `<img src="${esc(i.url)}" alt="" class="w-full aspect-square object-cover" style="border-radius:12px">`).join('') || '<div class="col-span-2 aspect-square" style="background:#eadfcd;border-radius:12px"></div>'}</div>
-  <div><span class="tag">${COND[p.condition]}</span><h1 class="text-2xl font-extrabold mt-2 text-brand">${esc(p.title)}</h1><div class="text-2xl font-extrabold my-2 text-brand">${vnd(p.salePrice ?? p.price)} ${p.salePrice ? `<s class="old">${vnd(p.price)}</s> <span class="tag" style="background:#f9dcd8;color:#b3261e">-${p.salePercent}%</span>` : ''}</div>
+  <div><span class="tag">${COND[p.condition]}</span>${p.consigned ? ' <span class="tag">Hàng ký gửi, đã được sàn kiểm tra</span>' : ''}<h1 class="text-2xl font-extrabold mt-2 text-brand">${esc(p.title)}</h1><div class="text-2xl font-extrabold my-2 text-brand">${vnd(p.salePrice ?? p.price)} ${p.salePrice ? `<s class="old">${vnd(p.price)}</s> <span class="tag" style="background:#f9dcd8;color:#b3261e">-${p.salePercent}%</span>` : ''}</div>
   <dl class="text-sm grid grid-cols-3 gap-y-2 mb-4"><dt style="color:var(--mut)">Danh mục</dt><dd class="col-span-2">${CAT[p.category] || 'Khác'}</dd><dt style="color:var(--mut)">Thương hiệu</dt><dd class="col-span-2">${esc(p.brand)}</dd><dt style="color:var(--mut)">Size</dt><dd class="col-span-2">${esc(p.size)}</dd><dt style="color:var(--mut)">Số đo thực tế</dt><dd class="col-span-2">${esc(p.measures)}</dd><dt style="color:var(--mut)">Chất liệu</dt><dd class="col-span-2">${esc(p.material) || 'Không rõ'}</dd></dl>
   <p class="text-sm mb-3">${esc(p.description)}</p>
-  <p class="text-sm mb-5">Người bán: <a class="underline" href="#/shop/${p.seller.id}">${esc(p.seller.name)}</a>${p.seller.shopStatus === 'verified' ? ' <span class="tag">Shop đã xác minh</span>' : ''}${p.reviews ? `, ${p.rating.toFixed(1)}/5 sao (${p.reviews} đánh giá)` : ', chưa có đánh giá'}</p>
-  ${p.status === 'APPROVED' ? `<button class="btn lg" onclick="addCart(${p.id})" ${inCart ? 'disabled' : ''}>${inCart ? 'Đã trong giỏ hàng' : 'Thêm vào giỏ hàng'}</button>` : '<p style="color:var(--mut)">Sản phẩm này hiện không còn để bán.</p>'}
-  <p class="text-xs mt-4" style="color:var(--mut)">Sàn giữ tiền đến khi bạn nhận hàng. Bạn có thể khiếu nại trong 48 giờ nếu hàng sai mô tả.</p></div></div>`);
+  <p class="text-sm mb-1">Người bán: <a class="underline" href="#/shop/${p.seller.id}">${esc(p.seller.name)}</a></p><p class="mb-5">${sellerLine(p.sellerStats)}</p>
+  <div class="flex flex-wrap gap-2 items-center">${p.status === 'APPROVED' ? `<button class="btn lg" onclick="addCart(${p.id})" ${inCart ? 'disabled' : ''}>${inCart ? 'Đã trong giỏ hàng' : 'Thêm vào giỏ hàng'}</button>` : '<p style="color:var(--mut)">Sản phẩm này hiện không còn để bán.</p>'}${mine ? '' : `<a class="btn alt lg" href="#/chat/${p.seller.id}?p=${p.id}">Nhắn tin cho người bán</a>`}</div>
+  <p class="text-xs mt-4" style="color:var(--mut)">Sàn giữ tiền đến khi bạn nhận hàng. Bạn có thể khiếu nại kèm ảnh hoặc video nếu hàng sai mô tả.</p>
+  ${mine ? '' : `<button class="text-xs underline mt-2" style="color:var(--mut)" onclick="reportProduct(${p.id})">Báo cáo tin đăng vi phạm</button>`}</div></div>`);
 }
+const reportProduct = id => { if (needLogin()) return; const r = prompt('Lý do báo cáo (hàng giả, mô tả sai sự thật, nội dung vi phạm...):'); if (r) act(() => api(`/products/${id}/report`, { method: 'POST', body: { reason: r } }), () => alert('Đã gửi báo cáo, sàn sẽ xem xét.')); };
 const addCart = id => { setCart([...new Set([...cart(), id])]); product(id); };
 
-let coupon = null;
+let coupon = null, carrier = 'ghn', FEES = null;
 async function cartView() {
   const ps = (await Promise.all(cart().map(id => api('/products/' + id).catch(() => null)))).filter(p => p && p.status === 'APPROVED');
   setCart(ps.map(p => p.id));
   if (!ps.length) return $('#app').innerHTML = page('<h1 class="h1">Giỏ hàng trống</h1><a class="btn" href="#/browse">Xem sản phẩm</a>');
+  FEES = await api('/fees');
   const eff = p => p.salePrice ?? p.price, total = ps.reduce((a, p) => a + eff(p), 0);
   if (coupon && coupon.amount !== total) coupon = null;
-  const disc = coupon ? coupon.discount : 0;
+  const disc = coupon ? coupon.discount : 0, nOrders = new Set(ps.map(p => p.sellerId)).size;
+  const car = FEES.carriers.find(c => c.key === carrier) || FEES.carriers[0], ship = car.fee * nOrders;
   $('#app').innerHTML = page(`<h1 class="h1">Giỏ hàng</h1><div class="space-y-2 mb-4">${ps.map(p => `<div class="box p-2 flex gap-3 items-center"><div class="w-20 h-16 overflow-hidden" style="background:#eadfcd;border-radius:8px">${p.images[0] ? `<img src="${esc(p.images[0].url)}" alt="" class="w-full h-full object-cover">` : ''}</div><div class="flex-1 text-sm"><div class="font-semibold">${esc(p.title)}</div><div>${vnd(eff(p))} ${p.salePrice ? `<s class="old">${vnd(p.price)}</s>` : ''}</div></div><button class="btn alt" onclick="setCart(cart().filter(x=>x!==${p.id}));cartView()">Xóa</button></div>`).join('')}</div>
+  <h2 class="font-bold mb-2 text-brand">Đơn vị vận chuyển</h2><div class="space-y-2 mb-4 max-w-xl">${FEES.carriers.map(x => `<label class="box p-3 flex items-center gap-3 text-sm cursor-pointer"><input type="radio" name="car" value="${x.key}" ${x.key === car.key ? 'checked' : ''} onchange="carrier=this.value;cartView()" style="width:auto"><span class="flex-1"><b>${x.name}</b><br><span style="color:var(--mut)">Dự kiến giao sau khi gửi: ${x.eta}</span></span><b>${vnd(x.fee)}/đơn</b></label>`).join('')}</div>
   <div class="flex gap-2 max-w-sm mb-3"><input id="cp" placeholder="Mã giảm giá" value="${esc(coupon?.code || '')}"><button class="btn alt" onclick="applyCoupon(${total})">Áp dụng</button></div>
-  <p class="text-sm">Tạm tính: ${vnd(total)}</p>${disc ? `<p class="text-sm" style="color:var(--g2)">Giảm giá (${esc(coupon.code)}): -${vnd(disc)}</p>` : ''}
-  <p class="mb-1 font-bold">Tổng: ${vnd(total - disc)} <span class="font-normal text-sm" style="color:var(--mut)">(chưa gồm phí vận chuyển)</span></p><p class="text-xs mb-3" style="color:var(--mut)">Sản phẩm của nhiều người bán sẽ được tách thành nhiều đơn.</p>
-  <textarea id="addr" rows="2" placeholder="Địa chỉ nhận hàng" class="mb-3"></textarea><button class="btn lg" onclick="checkout()">Đặt hàng</button>`);
+  <div class="text-sm space-y-1 mb-3"><p>Tạm tính: ${vnd(total)}</p>${disc ? `<p style="color:var(--g2)">Giảm giá (${esc(coupon.code)}): -${vnd(disc)}</p>` : ''}<p>Phí vận chuyển (${nOrders} đơn): ${vnd(ship)}</p><p class="text-base font-bold">Tổng thanh toán: ${vnd(total - disc + ship)}</p></div>
+  <p class="text-xs mb-3 max-w-xl" style="color:var(--mut)">Sản phẩm của nhiều người bán sẽ được tách thành nhiều đơn. Người bán phải gửi hàng trong ${FEES.shipDays} ngày kể từ khi bạn thanh toán, quá hạn sàn tự động hoàn tiền. Bạn được kiểm tra ngoại quan khi nhận hàng nếu đơn vị vận chuyển hỗ trợ.</p>
+  <textarea id="addr" rows="2" placeholder="Địa chỉ nhận hàng" class="mb-3" oninput="window.addrV=this.value">${esc(window.addrV || '')}</textarea><button class="btn lg" onclick="checkout()">Đặt hàng</button>`);
 }
 const applyCoupon = total => act(async () => {
   const code = $('#cp').value.trim();
@@ -229,8 +240,8 @@ const applyCoupon = total => act(async () => {
 }, cartView);
 const checkout = () => act(async () => {
   if (needLogin()) return;
-  await api('/orders', { method: 'POST', body: { productIds: cart(), address: $('#addr').value, couponCode: coupon?.code } });
-  coupon = null; setCart([]); location.hash = '#/orders';
+  await api('/orders', { method: 'POST', body: { productIds: cart(), address: $('#addr').value, couponCode: coupon?.code, carrier } });
+  coupon = null; window.addrV = ''; setCart([]); location.hash = '#/orders';
 });
 
 /* ---------- Tài khoản ---------- */
@@ -252,36 +263,56 @@ async function loginView() {
 
 async function sellView() {
   if (needLogin()) return;
-  const mine = await api('/my/products'), SN = {PENDING:'Chờ duyệt',APPROVED:'Đang bán',REJECTED:'Bị từ chối',RESERVED:'Đang có đơn',SOLD:'Đã bán'};
-  $('#app').innerHTML = page(`<h1 class="h1">Đăng bán sản phẩm</h1><p class="text-sm mb-3" style="color:var(--mut)">Cần tối thiểu 4 ảnh thật: mặt trước, mặt sau, nhãn mác và chi tiết lỗi (nếu có). Tin đăng hiển thị sau khi sàn duyệt.</p>
+  const [mine, fees] = await Promise.all([api('/my/products'), api('/fees')]), SN = {PENDING:'Chờ duyệt',APPROVED:'Đang bán',REJECTED:'Bị từ chối',RESERVED:'Đang có đơn',SOLD:'Đã bán',HIDDEN:'Đang ẩn'};
+  window.FEE = fees;
+  $('#app').innerHTML = page(`<div class="flex flex-wrap items-center gap-3 mb-1"><h1 class="h1" style="margin:0">Đăng bán sản phẩm</h1><a class="btn alt" href="#/consign">Không có thời gian? Dùng dịch vụ ký gửi</a></div><p class="text-sm my-3" style="color:var(--mut)">Cần tối thiểu 4 ảnh thật: mặt trước, mặt sau, nhãn mác và chi tiết lỗi (nếu có). Tin đăng hiển thị sau khi sàn duyệt. Đăng tin miễn phí, sàn chỉ thu hoa hồng khi bán được.</p>
   <form id="sf" class="box grid md:grid-cols-2 gap-3 p-5 mb-8"><input name="title" placeholder="Tên sản phẩm" required><input name="brand" placeholder="Thương hiệu" required>
   <select name="category">${Object.entries(CAT).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select><select name="condition">${Object.entries(COND).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>
-  <input name="size" placeholder="Size" required><input name="measures" placeholder="Số đo thực tế (ngực, vai, dài...)" required><input name="material" placeholder="Chất liệu"><input name="price" type="number" min="1000" placeholder="Giá (VNĐ)" required>
+  <input name="size" placeholder="Size" required><input name="measures" placeholder="Số đo thực tế (ngực, vai, dài...)" required><input name="material" placeholder="Chất liệu"><input id="pr" name="price" type="number" min="1000" placeholder="Giá (VNĐ)" required oninput="feeCalc()">
+  <div id="feeBox" class="md:col-span-2 text-sm p-3" style="background:#f3f7ee;border-radius:10px"></div>
   <input name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple required class="md:col-span-2"><textarea name="description" rows="2" class="md:col-span-2" placeholder="Mô tả, nêu rõ lỗi nếu có"></textarea><button class="btn md:col-span-2 justify-center">Gửi duyệt</button></form>
-  <h2 class="font-extrabold text-lg mb-3 text-brand">Sản phẩm của tôi</h2><div class="grid4">${mine.map(p => `<div class="relative">${card(p)}<span class="tag absolute" style="top:48px;left:10px">${SN[p.status]}</span></div>`).join('') || '<p style="color:var(--mut)">Bạn chưa đăng sản phẩm nào.</p>'}</div>`);
+  <h2 class="font-extrabold text-lg mb-3 text-brand">Sản phẩm của tôi</h2><div class="grid4">${mine.map(p => `<div class="relative">${card(p)}<span class="tag absolute" style="top:48px;left:10px">${SN[p.status] || p.status}</span></div>`).join('') || '<p style="color:var(--mut)">Bạn chưa đăng sản phẩm nào.</p>'}</div>`);
+  feeCalc();
   $('#sf').onsubmit = e => { e.preventDefault(); act(() => api('/products', { method: 'POST', body: new FormData(e.target) }), () => { alert('Đã gửi, chờ sàn duyệt.'); sellView(); }); };
 }
+function feeCalc() {
+  const f = window.FEE, price = +($('#pr')?.value) || 0, fee = Math.round(price * f.commission / 100);
+  $('#feeBox').innerHTML = `<b>Phí sàn: ${f.commission}%</b>${price ? `, tức ${vnd(fee)}. Bạn nhận về khoảng <b>${vnd(price - fee)}</b> (chưa gồm phí vận chuyển do người mua trả).` : ' trên giá bán thành công. Nhập giá để xem số tiền bạn nhận được.'}${f.promo ? `<br><span style="color:var(--g2)">Ưu đãi người bán mới: giảm từ ${f.baseCommission}% xuống ${f.commission}% trong ${f.newShopDays} ngày đầu.</span>` : ''}<br><span style="color:var(--mut)">Tiền được sàn giữ đến khi người mua xác nhận, sau đó chuyển vào ví của bạn. Bạn cần gửi hàng trong ${f.shipDays} ngày kể từ khi có đơn đã thanh toán.</span>`;
+}
 
+const CARRIER = { ghn: 'Giao Hàng Nhanh', ghtk: 'Giao Hàng Tiết Kiệm', viettel: 'Viettel Post' };
+const media = urls => (urls || '').split(',').filter(Boolean).map(u => /\.(mp4|webm)$/i.test(u) ? `<video src="${esc(u)}" controls preload="metadata" style="height:70px;border-radius:8px"></video>` : `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="Bằng chứng" style="width:70px;height:70px;object-fit:cover;border-radius:8px"></a>`).join('');
 async function ordersView(tab = 'buy') {
   if (needLogin()) return;
-  const os = await api('/orders?role=' + tab), run = (path, body) => act(() => api(path, { method: 'POST', body }), () => ordersView(tab));
+  const [os, fees] = await Promise.all([api('/orders?role=' + tab), api('/fees')]), run = (path, body) => act(() => api(path, { method: 'POST', body }), () => ordersView(tab));
   window.run = run;
   const acts = o => {
     const b = (label, path, cls = '') => `<button class="btn ${cls}" onclick="run('/orders/${o.id}/${path}',{})">${label}</button>`;
     if (tab === 'buy') {
       if (o.status === 'PENDING_PAYMENT') return b('Thanh toán (mô phỏng)', 'pay') + b('Hủy đơn', 'cancel', 'alt');
       if (o.status === 'SHIPPED') return b('Đã nhận hàng', 'receive');
-      if (o.status === 'RECEIVED') return `<button class="btn danger" onclick="dispute(${o.id})">Khiếu nại hàng sai mô tả</button>`;
+      if (o.status === 'RECEIVED') return `<button class="btn danger" onclick="openDispute(${o.id})">Khiếu nại hàng sai mô tả</button>`;
       if (o.status === 'COMPLETED' && !o.review) return `<button class="btn" onclick="review(${o.id})">Đánh giá người bán</button>`;
     } else if (o.status === 'PAID') return b('Đã gửi hàng', 'ship');
     return '';
   };
+  const timing = o => {
+    const L = [];
+    if (o.status === 'PAID' && o.shipDeadline) { const late = new Date(o.shipDeadline) < Date.now(); L.push(tab === 'sell' ? `<span style="color:${late ? 'var(--red)' : 'var(--ink)'}">Hạn gửi hàng: <b>${dt(o.shipDeadline)}</b>${late ? ' (đã quá hạn, sàn sẽ hoàn tiền cho người mua)' : ''}</span>` : `Người bán phải gửi hàng trước <b>${dt(o.shipDeadline)}</b>, quá hạn sàn tự hoàn tiền cho bạn`); }
+    if (o.status === 'RECEIVED' && o.receivedAt) L.push(tab === 'buy' ? `Bạn có thể khiếu nại đến <b>${dt(new Date(o.receivedAt).getTime() + fees.holdHours * 3600e3)}</b>, sau đó tiền chuyển cho người bán` : `Tiền sẽ về ví sau <b>${dt(new Date(o.receivedAt).getTime() + fees.holdHours * 3600e3)}</b> nếu không có khiếu nại`);
+    return L.map(x => `<div class="mb-1">${x}</div>`).join('');
+  };
   $('#app').innerHTML = page(`<div class="flex gap-2 mb-4"><button class="btn ${tab === 'buy' ? '' : 'alt'}" onclick="ordersView('buy')">Tôi mua</button><button class="btn ${tab === 'sell' ? '' : 'alt'}" onclick="ordersView('sell')">Tôi bán</button></div>
   <div class="space-y-3">${os.map(o => `<div class="box p-4 text-sm"><div class="flex justify-between mb-1"><b>Đơn #${o.id}</b><span class="tag">${ST[o.status]}</span></div>
-  <div class="mb-1">${o.items.map(i => esc(i.product.title)).join(', ')}</div><div>Tổng: ${vnd(o.total)}${tab === 'sell' ? `, phí sàn ${vnd(o.commission)}, bạn nhận ${vnd(o.total - o.commission)}` : ''}</div>
-  <div class="mb-2" style="color:var(--mut)">${tab === 'buy' ? 'Người bán: ' + esc(o.seller.name) : 'Người mua: ' + esc(o.buyer.name) + ', giao tới: ' + esc(o.address)}</div>${o.dispute ? `<div class="mb-2" style="color:var(--red)">Khiếu nại: ${esc(o.dispute.reason)}</div>` : ''}<div class="flex gap-2 flex-wrap">${acts(o)}</div></div>`).join('') || '<p style="color:var(--mut)">Chưa có đơn hàng nào.</p>'}</div>`);
+  <div class="mb-1">${o.items.map(i => esc(i.product.title)).join(', ')}</div><div>Tiền hàng: ${vnd(o.total)}${o.discount ? ` (đã giảm ${vnd(o.discount)})` : ''}, phí vận chuyển: ${vnd(o.shippingFee)}${tab === 'sell' ? `, phí sàn ${vnd(o.commission)}, bạn nhận <b>${vnd(o.total - o.commission + o.shippingFee)}</b>` : `, <b>tổng ${vnd(o.total + o.shippingFee)}</b>`}</div>
+  <div class="mb-1">Vận chuyển: ${CARRIER[o.carrier] || 'Chưa chọn'}${o.trackingCode ? `, mã vận đơn <b>${esc(o.trackingCode)}</b>` : ''}</div>
+  <div class="mb-2" style="color:var(--mut)">${tab === 'buy' ? 'Người bán: ' + esc(o.seller.name) + ` (<a class="underline" href="#/chat/${o.seller.id}">nhắn tin</a>)` : 'Người mua: ' + esc(o.buyer.name) + ', giao tới: ' + esc(o.address)}</div>${timing(o)}${o.dispute ? `<div class="mb-2" style="color:var(--red)">Khiếu nại: ${esc(o.dispute.reason)}</div>${o.dispute.evidence ? `<div class="flex gap-2 flex-wrap mb-2">${media(o.dispute.evidence)}</div>` : ''}` : ''}<div class="flex gap-2 flex-wrap">${acts(o)}</div></div>`).join('') || '<p style="color:var(--mut)">Chưa có đơn hàng nào.</p>'}</div>`);
 }
-const dispute = id => { const r = prompt('Lý do khiếu nại (kèm mô tả lỗi):'); if (r) run(`/orders/${id}/dispute`, { reason: r }); };
+function openDispute(id) {
+  $('#dlg-b').innerHTML = `<h3 class="font-extrabold text-lg text-brand mb-2">Khiếu nại đơn #${id}</h3><p class="text-sm mb-2" style="color:var(--mut)">Mô tả lỗi và đính kèm ảnh hoặc video làm bằng chứng (tối đa 4 tệp). Sàn sẽ xem xét ý kiến của cả hai bên.</p><textarea name="reason" rows="3" required placeholder="VD: Áo có vết ố không được nêu trong mô tả"></textarea><input name="evidence" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" multiple class="mt-2"><div class="flex justify-end gap-2 mt-3"><button type="button" class="btn alt" onclick="$('#dlg').close()">Hủy</button><button class="btn danger">Gửi khiếu nại</button></div>`;
+  $('#dlg-f').onsubmit = e => { e.preventDefault(); act(() => api(`/orders/${id}/dispute`, { method: 'POST', body: new FormData(e.target) }), () => { $('#dlg').close(); ordersView('buy'); }); };
+  $('#dlg').showModal();
+}
 const review = id => { const r = prompt('Số sao (1-5):', '5'); if (!r) return; const c = prompt('Nhận xét:') || ''; run(`/orders/${id}/review`, { rating: r, comment: c }); };
 
 async function walletView() {
@@ -295,11 +326,50 @@ async function walletView() {
 
 async function shopView(id) {
   const d = await api('/shops/' + id);
-  $('#app').innerHTML = page(`<h1 class="h1">${esc(d.user.name)}</h1><div class="grid4 mb-8">${d.products.map(card).join('') || '<p style="color:var(--mut)">Shop chưa có sản phẩm đang bán.</p>'}</div>
+  $('#app').innerHTML = page(`<h1 class="h1" style="margin-bottom:.3rem">${esc(d.user.name)}</h1><p class="mb-4">${sellerLine(d.stats)} ${me && me.id !== d.user.id ? `<a class="btn alt" style="padding:.2rem .8rem" href="#/chat/${d.user.id}">Nhắn tin</a>` : ''}</p><div class="grid4 mb-8">${d.products.map(card).join('') || '<p style="color:var(--mut)">Shop chưa có sản phẩm đang bán.</p>'}</div>
   <h2 class="font-extrabold text-lg mb-2 text-brand">Đánh giá từ người mua</h2><div class="space-y-2 text-sm">${d.reviews.map(r => `<div class="box p-3"><b>${esc(r.author.name)}</b>, ${r.rating}/5 sao<div>${esc(r.comment)}</div></div>`).join('') || '<p style="color:var(--mut)">Chưa có đánh giá.</p>'}</div>`);
 }
 
-const R = { '': home, browse, favorites, how, p: product, cart: cartView, login: loginView, sell: sellView, orders: () => ordersView('buy'), wallet: walletView, shop: shopView };
+/* ---------- Tin nhắn ---------- */
+let chatTimer;
+async function chatView(uid, qs) {
+  if (needLogin()) return;
+  clearInterval(chatTimer);
+  const pid = new URLSearchParams(qs || '').get('p'); uid = uid ? +uid : 0;
+  const threads = await api('/messages/threads'), conv = uid ? await api('/messages/' + uid) : null;
+  const list = [...threads]; if (uid && !list.some(t => t.userId === uid)) list.unshift({ userId: uid, name: conv.other.name, unread: 0, last: null });
+  const ctx = pid ? await api('/products/' + pid).catch(() => null) : null;
+  $('#app').innerHTML = page(`<h1 class="h1">Tin nhắn</h1><div class="grid md:grid-cols-3 gap-4"><div class="box p-2 space-y-1">${list.map(t => `<a href="#/chat/${t.userId}" class="block p-2 text-sm ${t.userId === uid ? 'tag' : ''}" style="border-radius:8px"><b>${esc(t.name)}</b>${t.unread ? ` <span class="badge-n" style="position:static;display:inline-grid">${t.unread}</span>` : ''}<div class="truncate" style="color:var(--mut)">${t.last ? esc(t.last.body) : 'Cuộc trò chuyện mới'}</div></a>`).join('') || '<p class="p-2 text-sm" style="color:var(--mut)">Chưa có cuộc trò chuyện nào.</p>'}</div>
+  <div class="md:col-span-2 box p-3 flex flex-col" style="min-height:420px">${uid ? `<div class="font-bold mb-1">${esc(conv.other.name)}</div>${ctx ? `<a class="text-xs underline mb-2" href="#/p/${ctx.id}">Đang hỏi về: ${esc(ctx.title)}</a>` : ''}<div class="text-xs p-2 mb-2" style="background:#fdf1d8;border-radius:8px">Vì an toàn, hãy đặt hàng và thanh toán ngay trên sàn để được giữ tiền và bảo vệ. Không chia sẻ số điện thoại hoặc tài khoản ngân hàng.</div><div id="msgs" class="flex-1 overflow-auto space-y-2 mb-3" style="max-height:380px"></div><form id="mf" class="flex gap-2"><input name="body" placeholder="Nhập tin nhắn..." required maxlength="1000" autocomplete="off"><button class="btn">Gửi</button></form>` : '<p class="text-sm" style="color:var(--mut)">Chọn một cuộc trò chuyện, hoặc bấm "Nhắn tin cho người bán" ở trang sản phẩm.</p>'}</div></div>`);
+  if (!uid) return;
+  let first = true;
+  const draw = c => {
+    const box = $('#msgs'); if (!box) return;
+    const near = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+    box.innerHTML = c.messages.map(m => `<div class="flex ${m.fromId === me.id ? 'justify-end' : ''}"><div style="max-width:75%;padding:.45rem .8rem;border-radius:14px;${m.fromId === me.id ? 'background:var(--g);color:#fff' : 'background:#f1ece1'}"><div class="text-sm">${esc(m.body)}</div><div style="font-size:.65rem;opacity:.7">${new Date(m.createdAt).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}</div></div></div>`).join('') || '<p class="text-sm" style="color:var(--mut)">Hãy gửi lời chào đầu tiên.</p>';
+    if (near || first) box.scrollTop = box.scrollHeight; first = false;
+  };
+  draw(conv);
+  $('#mf').onsubmit = e => { e.preventDefault(); act(async () => { const r = await api('/messages', { method: 'POST', body: { toId: uid, body: e.target.body.value, productId: pid } }); e.target.reset(); draw(await api('/messages/' + uid)); if (r.warning) alert(r.warning); }); };
+  chatTimer = setInterval(async () => { if (!location.hash.startsWith('#/chat/' + uid)) return clearInterval(chatTimer); try { draw(await api('/messages/' + uid)); } catch {} }, 5000);
+}
+
+/* ---------- Ký gửi ---------- */
+const CONS_ST = { SUBMITTED: 'Chờ sàn nhận hàng', RECEIVED: 'Sàn đã nhận hàng, chờ đăng bán', REJECTED: 'Không đạt yêu cầu', LISTED: 'Đang bán trên sàn', SOLD: 'Đã bán', EXPIRED: 'Hết hạn ký gửi', RETURNED: 'Đã trả hàng cho bạn' };
+async function consignView() {
+  if (needLogin()) return;
+  const [list, fees] = await Promise.all([api('/consignments'), api('/fees')]);
+  $('#app').innerHTML = page(`<h1 class="h1">Ký gửi hàng</h1>
+  <div class="box p-4 mb-5 text-sm max-w-3xl"><b>Bạn chỉ cần gửi hàng, sàn lo phần còn lại.</b><ol class="list-decimal pl-5 mt-2 space-y-1"><li>Gửi yêu cầu ký gửi kèm ảnh sơ bộ và giá mong muốn.</li><li>Gửi hàng đến sàn. Sàn kiểm tra chất lượng, làm sạch và chụp ảnh chuẩn, hàng không đạt sẽ được trả lại.</li><li>Sàn đăng bán, trả lời khách, đóng gói và giao hàng.</li><li>Bán được, sàn thu hoa hồng <b>${fees.consignCommission}%</b> và chuyển phần còn lại vào ví của bạn.</li></ol><p class="mt-2" style="color:var(--mut)">Thời hạn ký gửi ${fees.consignDays} ngày. Hết hạn mà chưa bán được, hàng được ẩn khỏi sàn và trả lại cho bạn.</p></div>
+  <form id="cf" class="box grid md:grid-cols-2 gap-3 p-5 mb-8 max-w-3xl"><input name="title" placeholder="Tên sản phẩm" required><input name="brand" placeholder="Thương hiệu" required>
+  <select name="category">${Object.entries(CAT).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select><select name="condition">${Object.entries(COND).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>
+  <input name="size" placeholder="Size" required><input name="measures" placeholder="Số đo thực tế" required><input name="expectedPrice" type="number" min="1000" placeholder="Giá mong muốn (VNĐ)" required><input name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple required>
+  <textarea name="description" rows="2" class="md:col-span-2" placeholder="Mô tả, nêu rõ lỗi nếu có"></textarea><button class="btn md:col-span-2 justify-center">Gửi yêu cầu ký gửi</button></form>
+  <h2 class="font-extrabold text-lg mb-3 text-brand">Yêu cầu ký gửi của tôi</h2><div class="space-y-2 max-w-3xl">${list.map(c => `<div class="box p-3 flex gap-3 items-center text-sm"><img src="${esc((c.images || '').split(',')[0])}" alt="" class="w-16 h-16 object-cover" style="border-radius:8px;background:#eadfcd"><div class="flex-1"><b>${esc(c.title)}</b>, ${vnd(c.expectedPrice)}${c.finalPrice ? `, giá bán ${vnd(c.finalPrice)}` : ''}<div style="color:var(--mut)">${c.expiresAt ? 'Hạn ký gửi: ' + dt(c.expiresAt) : 'Gửi lúc ' + dt(c.createdAt)}</div>${c.adminNote ? `<div>Ghi chú của sàn: ${esc(c.adminNote)}</div>` : ''}</div><span class="tag">${CONS_ST[c.status]}</span></div>`).join('') || '<p style="color:var(--mut)">Bạn chưa có yêu cầu ký gửi nào.</p>'}</div>`);
+  $('#cf').onsubmit = e => { e.preventDefault(); act(() => api('/consignments', { method: 'POST', body: new FormData(e.target) }), () => { alert('Đã gửi yêu cầu. Sàn sẽ liên hệ hướng dẫn gửi hàng.'); consignView(); }); };
+}
+
+const R = { '': home, chat: chatView, consign: consignView, browse, favorites, how, p: product, cart: cartView, login: loginView, sell: sellView, orders: () => ordersView('buy'), wallet: walletView, shop: shopView };
 async function route() {
   if (token && !me) me = await api('/me').catch(() => { delete localStorage.t; token = null; });
   if (!window._cats) { window._cats = 1; await loadCats(); }

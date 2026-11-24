@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const db = require('../../db');
 const { bad, wrap } = require('../../utils');
-const { getOrder, productIds, release, refund } = require('../../services/orderService');
+const { getOrder, productIds, release, refund, shipData } = require('../../services/orderService');
 
 router.get('/orders', wrap(async (q, s) => {
   const { status, q: kw } = q.query, where = {};
@@ -30,7 +30,7 @@ router.post('/orders/:id/action', wrap(async (q, s) => {
     await db.order.update({ where: { id: o.id }, data: { status: 'CANCELLED' } });
     await db.product.updateMany({ where: productIds(o), data: { status: 'APPROVED' } });
   }
-  if (a === 'ship') await db.order.update({ where: { id: o.id }, data: { status: 'SHIPPED' } });
+  if (a === 'ship') await db.order.update({ where: { id: o.id }, data: shipData(o) });
   if (a === 'refund') await refund(o);
   if (a === 'release') await release(o);
   if (o.dispute && o.dispute.status === 'OPEN')

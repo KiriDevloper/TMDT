@@ -23,6 +23,7 @@ const ICONS = {
   bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 21a2 2 0 0 0 4 0"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
   menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+  truck: '<path d="M3 7h11v9H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="18" r="1.8"/><circle cx="17" cy="18" r="1.8"/>',
 };
 const ic = (n, s = 20) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[n]}</svg>`;
 
@@ -32,8 +33,8 @@ const SHOP_ST = { pending: ['Chờ xác minh', 'warn'], verified: ['Đã xác mi
 const COND = { NEW: 'Mới 99%', GOOD: 'Rất tốt', FAIR: 'Khá tốt', FLAW: 'Có lỗi nhỏ' };
 const pill = (map, k) => `<span class="pill ${(map[k] || ['', 'gray'])[1]}">${(map[k] || [k])[0]}</span>`;
 
-let token = localStorage.t, me = null, pend = { products: 0, disputes: 0, sellers: 0 }, CATS = [];
-const F = { dashboard: { days: 7 }, products: { q: '', status: '', category: '' }, orders: { q: '', status: '' }, customers: { q: '', status: '' }, sellers: { q: '', status: '' }, disputes: { status: 'OPEN' }, promotions: { tab: 'coupons' }, reports: { days: 30 } };
+let token = localStorage.t, me = null, pend = { products: 0, disputes: 0, sellers: 0, violations: 0, consignments: 0 }, CATS = [];
+const F = { dashboard: { days: 7 }, products: { q: '', status: '', category: '' }, orders: { q: '', status: '' }, customers: { q: '', status: '' }, sellers: { q: '', status: '' }, consign: { status: '' }, disputes: { status: 'OPEN' }, promotions: { tab: 'coupons' }, reports: { days: 30 } };
 const catName = k => (CATS.find(c => c.key === k) || {}).name || k;
 const loadCats = async () => { CATS = await api('/admin/categories'); };
 
@@ -144,7 +145,7 @@ async function products(v) {
     if (p.status === 'HIDDEN') A.push(`<button class="lk" onclick="pAct(${p.id},'unhide')">Hiện lại</button>`);
     if (p.status === 'REJECTED') A.push(`<button class="lk" onclick="pAct(${p.id},'approve')">Duyệt lại</button>`);
     A.push(`<button class="lk" onclick="editProduct(${p.id})">Sửa</button>`, `<button class="lk red" onclick="delProduct(${p.id})">Xóa</button>`);
-    return [`<div class="pcell"><img src="${esc(p.images[0]?.url || '')}" alt=""><div><b>${esc(p.title)}</b><small>${esc(p.brand)}, size ${esc(p.size)}</small></div></div>`, esc(p.seller.name), esc(catName(p.category)), `<span class="num">${vnd(p.price)}</span>`, pill(PROD_ST, p.status), `<span class="num">${dday(p.createdAt)}</span>`, `<div class="acts">${A.join('')}</div>`];
+    return [`<div class="pcell"><img src="${esc(p.images[0]?.url || '')}" alt=""><div><b>${esc(p.title)}</b>${p.consigned ? ' <span class="pill info">Ký gửi</span>' : ''}<small>${esc(p.brand)}, size ${esc(p.size)}</small></div></div>`, esc(p.seller.name), esc(catName(p.category)), `<span class="num">${vnd(p.price)}</span>`, pill(PROD_ST, p.status), `<span class="num">${dday(p.createdAt)}</span>`, `<div class="acts">${A.join('')}</div>`];
   }), 'Không có sản phẩm nào');
 }
 const pAct = (id, a) => act(() => post(`/admin/products/${id}/${a}`), 'Đã cập nhật sản phẩm');
@@ -182,7 +183,7 @@ const OACT = { cancel: 'Hủy đơn hàng này?', ship: 'Xác nhận đơn đã 
 const oAct = (id, a) => confirm(OACT[a]) && act(() => post(`/admin/orders/${id}/action`, { action: a }), 'Đã xử lý đơn hàng');
 async function showOrder(id) {
   const o = await api('/admin/orders/' + id);
-  info('Đơn ' + oid(o.id), `<dl class="kv"><dt>Trạng thái</dt><dd>${pill(ORDER_ST, o.status)}</dd><dt>Khách hàng</dt><dd>${esc(o.buyer.name)}</dd><dt>Người bán</dt><dd>${esc(o.seller.name)}</dd><dt>Địa chỉ giao</dt><dd>${esc(o.address)}</dd><dt>Sản phẩm</dt><dd>${o.items.map(i => `${esc(i.product.title)} (${vnd(i.price)})`).join('<br>')}</dd><dt>Giảm giá</dt><dd>${o.discount ? vnd(o.discount) + (o.couponCode ? ' (mã ' + esc(o.couponCode) + ')' : '') : 'Không'}</dd><dt>Tổng tiền</dt><dd><b>${vnd(o.total)}</b></dd><dt>Phí sàn</dt><dd>${vnd(o.commission)}</dd><dt>Ngày đặt</dt><dd>${dt(o.createdAt)}</dd>${o.dispute ? `<dt>Khiếu nại</dt><dd>${esc(o.dispute.reason)}</dd>` : ''}<dt>Giao dịch ví</dt><dd>${o.txns.map(t => `${esc(t.type)}: ${vnd(t.amount)}`).join('<br>') || 'Chưa có'}</dd></dl>`);
+  info('Đơn ' + oid(o.id), `<dl class="kv"><dt>Trạng thái</dt><dd>${pill(ORDER_ST, o.status)}</dd><dt>Khách hàng</dt><dd>${esc(o.buyer.name)}</dd><dt>Người bán</dt><dd>${esc(o.seller.name)}</dd><dt>Địa chỉ giao</dt><dd>${esc(o.address)}</dd><dt>Vận chuyển</dt><dd>${esc(o.carrier || '-')}, phí ${vnd(o.shippingFee)}${o.trackingCode ? ', mã vận đơn ' + esc(o.trackingCode) : ''}</dd>${o.shipDeadline ? `<dt>Hạn gửi hàng</dt><dd>${dt(o.shipDeadline)}</dd>` : ''}<dt>Sản phẩm</dt><dd>${o.items.map(i => `${esc(i.product.title)} (${vnd(i.price)})`).join('<br>')}</dd><dt>Giảm giá</dt><dd>${o.discount ? vnd(o.discount) + (o.couponCode ? ' (mã ' + esc(o.couponCode) + ')' : '') : 'Không'}</dd><dt>Tổng tiền</dt><dd><b>${vnd(o.total)}</b></dd><dt>Phí sàn</dt><dd>${vnd(o.commission)}</dd><dt>Ngày đặt</dt><dd>${dt(o.createdAt)}</dd>${o.dispute ? `<dt>Khiếu nại</dt><dd>${esc(o.dispute.reason)}</dd>` : ''}<dt>Giao dịch ví</dt><dd>${o.txns.map(t => `${esc(t.type)}: ${vnd(t.amount)}`).join('<br>') || 'Chưa có'}</dd></dl>`);
 }
 
 /* ---------- 4. Quản lý khách hàng ---------- */
@@ -256,16 +257,55 @@ const editSale = id => { const c = SL[id]; formModal('Sửa chương trình sale
 const togSale = (id, active) => act(() => api('/admin/sales/' + id, { method: 'PATCH', body: { active } }), 'Đã cập nhật');
 const delSale = id => confirm('Xóa chương trình sale này?') && act(() => api('/admin/sales/' + id, { method: 'DELETE' }), 'Đã xóa');
 
-/* ---------- 8. Quản lý khiếu nại ---------- */
+/* ---------- 8. Quản lý khiếu nại và báo cáo vi phạm ---------- */
+const ev = urls => (urls || '').split(',').filter(Boolean).map(u => /\.(mp4|webm)$/i.test(u) ? `<video src="${esc(u)}" controls preload="metadata" style="height:90px;border-radius:8px"></video>` : `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="Bằng chứng" style="width:90px;height:90px;object-fit:cover;border-radius:8px"></a>`).join('');
 async function disputes(v) {
-  const st = F.disputes.status, list = await api('/admin/disputes?status=' + st);
-  v.innerHTML = head('alert', 'Quản lý khiếu nại', 'Xử lý báo cáo và tranh chấp giữa người mua và người bán', `<div class="seg">${[['OPEN', 'Đang mở'], ['RESOLVED', 'Đã xử lý'], ['', 'Tất cả']].map(([k, l]) => `<button class="${st === k ? 'on' : ''}" onclick="setF('disputes','status','${k}')">${l}</button>`).join('')}</div>`)
+  const st = F.disputes.status;
+  const tabs = `<div class="seg">${[['OPEN', 'Đang mở'], ['RESOLVED', 'Đã xử lý'], ['', 'Tất cả'], ['VIOL', 'Tin đăng bị báo cáo']].map(([k, l]) => `<button class="${st === k ? 'on' : ''}" onclick="setF('disputes','status','${k}')">${l}${k === 'VIOL' && pend.violations ? ` (${pend.violations})` : ''}</button>`).join('')}</div>`;
+  if (st === 'VIOL') {
+    const list = await api('/admin/violations?status=OPEN');
+    v.innerHTML = head('alert', 'Báo cáo tin đăng vi phạm', 'Người dùng báo cáo hàng giả, hàng nhái hoặc nội dung sai sự thật', tabs)
+    + (list.map(x => `<div class="card dcard"><div class="ch" style="margin:0"><h3>${esc(x.product.title)}</h3>${pill(PROD_ST, x.product.status)}</div><div class="imgs">${x.product.images.slice(0, 4).map(i => `<img src="${esc(i.url)}" alt="">`).join('')}</div>
+      <div>Người bán: <b>${esc(x.product.seller.name)}</b>, người báo cáo: <b>${esc(x.reporter.name)}</b>, ${dt(x.createdAt)}</div><div><b>Lý do báo cáo:</b> ${esc(x.reason)}</div>
+      <div class="acts"><button class="btn red" onclick="vAct(${x.id},'hide')">Gỡ tin (ẩn sản phẩm)</button><button class="btn alt" onclick="vAct(${x.id},'dismiss')">Bỏ qua báo cáo</button></div></div>`).join('') || '<div class="card pad empty">Không có báo cáo nào đang chờ xử lý</div>');
+    return;
+  }
+  const list = await api('/admin/disputes?status=' + st);
+  v.innerHTML = head('alert', 'Quản lý khiếu nại', 'Xử lý báo cáo và tranh chấp giữa người mua và người bán', tabs)
   + (list.map(d => { const o = d.order; return `<div class="card dcard"><div class="ch" style="margin:0"><h3>${oid(o.id)}, ${vnd(o.total)}</h3>${d.status === 'OPEN' ? '<span class="pill bad">Đang mở</span>' : `<span class="pill ok">${d.decision === 'REFUND' ? 'Đã hoàn tiền' : 'Đã giải ngân cho người bán'}</span>`}</div>
     <div>Người mua: <b>${esc(o.buyer.name)}</b> (${esc(o.buyer.email)}), người bán: <b>${esc(o.seller.name)}</b></div><div class="imgs">${o.items.map(i => `<img src="${esc(i.product.images[0]?.url || '')}" alt="" title="${esc(i.product.title)}">`).join('')}</div>
-    <div>Sản phẩm: ${esc(o.items.map(i => i.product.title).join(', '))}</div><div><b>Lý do khiếu nại:</b> ${esc(d.reason)}</div><small style="color:var(--mut)">Gửi lúc ${dt(d.createdAt)}</small>${d.note ? `<div><b>Ghi chú xử lý:</b> ${esc(d.note)}</div>` : ''}
+    <div>Sản phẩm: ${esc(o.items.map(i => i.product.title).join(', '))}</div><div><b>Lý do khiếu nại:</b> ${esc(d.reason)}</div>${d.evidence ? `<div><b>Bằng chứng của người mua:</b></div><div class="imgs" style="flex-wrap:wrap">${ev(d.evidence)}</div>` : '<small style="color:var(--mut)">Người mua không đính kèm bằng chứng</small>'}<small style="color:var(--mut)">Gửi lúc ${dt(d.createdAt)}</small>${d.note ? `<div><b>Ghi chú xử lý:</b> ${esc(d.note)}</div>` : ''}
     ${d.status === 'OPEN' ? `<div class="acts"><button class="btn red" onclick="resolveDispute(${d.id},'REFUND')">Hoàn tiền cho người mua</button><button class="btn" onclick="resolveDispute(${d.id},'RELEASE')">Giải ngân cho người bán</button></div>` : ''}</div>`; }).join('') || '<div class="card pad empty">Không có khiếu nại nào</div>');
 }
+const vAct = (id, action) => confirm(action === 'hide' ? 'Gỡ tin đăng này khỏi sàn?' : 'Bỏ qua báo cáo này?') && act(() => post(`/admin/violations/${id}/resolve`, { action }), 'Đã xử lý báo cáo');
 const resolveDispute = (id, decision) => formModal(decision === 'REFUND' ? 'Hoàn tiền cho người mua' : 'Giải ngân cho người bán', [{ name: 'note', label: 'Ghi chú xử lý (lưu lại để đối chiếu)', type: 'textarea', wide: 1 }], {}, d => post(`/admin/disputes/${id}/resolve`, { decision, note: d.note }), 'Xác nhận');
+
+/* ---------- Quản lý ký gửi ---------- */
+const CONS_ST = { SUBMITTED: ['Chờ nhận hàng', 'warn'], RECEIVED: ['Đã nhận, chờ đăng bán', 'info'], REJECTED: ['Không đạt', 'bad'], LISTED: ['Đang bán', 'ok'], SOLD: ['Đã bán', 'gray'], EXPIRED: ['Hết hạn', 'warn'], RETURNED: ['Đã trả lại', 'gray'] };
+let CNL = {};
+async function consign(v) {
+  const list = await api('/admin/consignments?status=' + F.consign.status);
+  CNL = Object.fromEntries(list.map(c => [c.id, c]));
+  v.innerHTML = head('truck', 'Quản lý ký gửi', 'Nhận hàng, kiểm tra, đăng bán và theo dõi hàng ký gửi', fsel('consign', 'status', [['', 'Mọi trạng thái'], ...Object.entries(CONS_ST).map(([k, x]) => [k, x[0]])]))
+  + tbl(['Sản phẩm', 'Người ký gửi', 'Giá mong muốn', 'Trạng thái', 'Hạn ký gửi', 'Ghi chú', 'Thao tác'], list.map(c => {
+    const A = [`<button class="lk" onclick="viewConsign(${c.id})">Xem</button>`];
+    if (c.status === 'SUBMITTED') A.push(`<button class="btn sm" onclick="cAct(${c.id},'receive')">Đã nhận hàng</button>`);
+    if (c.status === 'RECEIVED') A.push(`<button class="btn sm" onclick="cAct(${c.id},'list')">Đăng bán</button>`);
+    if (['SUBMITTED', 'RECEIVED'].includes(c.status)) A.push(`<button class="lk red" onclick="cAct(${c.id},'reject')">Từ chối</button>`);
+    if (['RECEIVED', 'REJECTED', 'EXPIRED'].includes(c.status)) A.push(`<button class="lk" onclick="cAct(${c.id},'return')">Đã trả hàng</button>`);
+    return [`<div class="pcell"><img src="${esc((c.images || '').split(',')[0])}" alt=""><div><b>${esc(c.title)}</b><small>${esc(c.brand)}, size ${esc(c.size)}</small></div></div>`, `${esc(c.seller.name)}<br><small>${esc(c.seller.email)}</small>`, `<span class="num">${vnd(c.expectedPrice)}</span>${c.finalPrice ? `<br><small>bán ${vnd(c.finalPrice)}</small>` : ''}`, pill(CONS_ST, c.status), c.expiresAt ? `<span class="num">${dday(c.expiresAt)}</span>` : '-', `<small>${esc(c.adminNote || '')}</small>`, `<div class="acts">${A.join('')}</div>`];
+  }), 'Chưa có yêu cầu ký gửi nào');
+}
+function viewConsign(id) {
+  const c = CNL[id];
+  info(c.title, `<div class="imgs-big">${(c.images || '').split(',').filter(Boolean).map(u => `<img src="${esc(u)}" alt="">`).join('')}</div><dl class="kv"><dt>Người ký gửi</dt><dd>${esc(c.seller.name)} (${esc(c.seller.email)})</dd><dt>Thương hiệu</dt><dd>${esc(c.brand)}</dd><dt>Size</dt><dd>${esc(c.size)}</dd><dt>Số đo</dt><dd>${esc(c.measures)}</dd><dt>Tình trạng</dt><dd>${COND[c.condition]}</dd><dt>Danh mục</dt><dd>${esc(catName(c.category))}</dd><dt>Giá mong muốn</dt><dd>${vnd(c.expectedPrice)}</dd><dt>Mô tả</dt><dd>${esc(c.description) || '-'}</dd></dl>`);
+}
+async function cAct(id, a) {
+  if (!CATS.length) await loadCats();
+  const c = CNL[id], T = { receive: 'Xác nhận đã nhận hàng', reject: 'Từ chối ký gửi', list: 'Đăng bán hàng ký gửi', return: 'Xác nhận đã trả hàng' };
+  const fields = a === 'list' ? [{ name: 'price', label: 'Giá bán trên sàn (VNĐ)', type: 'number', req: 1, min: 1000 }, { name: 'note', label: 'Ghi chú cho người bán', type: 'textarea', wide: 1 }] : [{ name: 'note', label: a === 'reject' ? 'Lý do từ chối (bắt buộc, người bán sẽ thấy)' : 'Ghi chú', type: 'textarea', wide: 1 }];
+  formModal(T[a], fields, { price: c.expectedPrice }, d => post(`/admin/consignments/${id}/action`, { action: a, price: d.price, note: d.note }), 'Xác nhận');
+}
 
 /* ---------- 9. Thống kê báo cáo ---------- */
 let LAST_REPORT = null;
@@ -295,7 +335,9 @@ async function settings(v) {
   + `<form id="sf" class="card pad" style="max-width:760px"><div class="fgrid">
     ${field({ name: 'siteName', label: 'Tên sàn', req: 1 }, s.siteName)}${field({ name: 'supportEmail', label: 'Email hỗ trợ', type: 'email' }, s.supportEmail)}
     ${field({ name: 'commission', label: 'Phí hoa hồng (%)', type: 'number', min: 0, max: 50, req: 1 }, s.commission)}${field({ name: 'holdHours', label: 'Thời gian giữ tiền / thời hạn khiếu nại (giờ)', type: 'number', min: 0, max: 720, req: 1 }, s.holdHours)}
-    ${field({ name: 'minImages', label: 'Số ảnh tối thiểu khi đăng bán', type: 'number', min: 1, max: 8, req: 1 }, s.minImages)}
+    ${field({ name: 'minImages', label: 'Số ảnh tối thiểu khi đăng bán', type: 'number', min: 1, max: 8, req: 1 }, s.minImages)}${field({ name: 'shipDays', label: 'Hạn người bán gửi hàng (ngày), quá hạn tự hoàn tiền', type: 'number', min: 1, max: 14, req: 1 }, s.shipDays)}
+    ${field({ name: 'newShopDays', label: 'Ưu đãi hoa hồng cho người bán mới (số ngày)', type: 'number', min: 0, max: 365, req: 1 }, s.newShopDays)}${field({ name: 'newShopCommission', label: 'Hoa hồng trong thời gian ưu đãi (%)', type: 'number', min: 0, max: 50, req: 1 }, s.newShopCommission)}
+    ${field({ name: 'consignCommission', label: 'Hoa hồng hàng ký gửi (%)', type: 'number', min: 0, max: 60, req: 1 }, s.consignCommission)}${field({ name: 'consignDays', label: 'Thời hạn ký gửi (ngày)', type: 'number', min: 7, max: 365, req: 1 }, s.consignDays)}
     ${field({ name: 'bannedWords', label: 'Từ khóa cấm (cách nhau bằng dấu phẩy)', type: 'textarea', wide: 1 }, s.bannedWords)}</div>
     <div class="dlg-a"><button class="btn">Lưu cài đặt</button></div></form>
     <p style="color:var(--mut);max-width:760px">Phí hoa hồng áp dụng cho các đơn tạo mới. Thời gian giữ tiền áp dụng ngay cho việc tự động giải ngân và hạn khiếu nại. Để demo nhanh, đặt 0.01 giờ.</p>`;
@@ -303,16 +345,16 @@ async function settings(v) {
 }
 
 /* ---------- Khung, đăng nhập, tìm kiếm nhanh ---------- */
-const NAV = [['dashboard', 'Tổng quan', 'home'], ['products', 'Quản lý sản phẩm', 'box'], ['orders', 'Quản lý đơn hàng', 'bag'], ['customers', 'Quản lý khách hàng', 'users'], ['sellers', 'Quản lý người bán', 'store'], ['categories', 'Danh mục', 'grid'], ['promotions', 'Khuyến mãi', 'tag'], ['disputes', 'Khiếu nại', 'alert'], ['reports', 'Báo cáo thống kê', 'chart'], ['settings', 'Cài đặt hệ thống', 'gear']];
-const PAGES = { dashboard, products, orders, customers, sellers, categories, promotions, disputes, reports, settings };
+const NAV = [['dashboard', 'Tổng quan', 'home'], ['products', 'Quản lý sản phẩm', 'box'], ['orders', 'Quản lý đơn hàng', 'bag'], ['customers', 'Quản lý khách hàng', 'users'], ['sellers', 'Quản lý người bán', 'store'], ['consign', 'Quản lý ký gửi', 'truck'], ['categories', 'Danh mục', 'grid'], ['promotions', 'Khuyến mãi', 'tag'], ['disputes', 'Khiếu nại', 'alert'], ['reports', 'Báo cáo thống kê', 'chart'], ['settings', 'Cài đặt hệ thống', 'gear']];
+const PAGES = { dashboard, products, orders, customers, sellers, consign, categories, promotions, disputes, reports, settings };
 const curPage = () => location.hash.slice(2).split('?')[0] || 'dashboard';
 function nav() {
-  const cur = curPage(), bd = { products: pend.products, disputes: pend.disputes, sellers: pend.sellers };
+  const cur = curPage(), bd = { products: pend.products, disputes: pend.disputes + pend.violations, sellers: pend.sellers, consign: pend.consignments };
   $('#nav').innerHTML = NAV.map(([k, l, i]) => `<a href="#/${k}" class="${cur === k ? 'on' : ''}">${ic(i, 22)}<span>${l}</span>${bd[k] ? `<span class="nb">${bd[k]}</span>` : ''}</a>`).join('') + `<hr><a href="#" onclick="logout();return false">${ic('logout', 22)}<span>Đăng xuất</span></a>`;
 }
 async function refreshPending() {
   try { pend = await api('/admin/pending'); } catch {}
-  const n = pend.products + pend.disputes + pend.sellers; $('#bn').textContent = n; $('#bn').hidden = !n;
+  const n = pend.products + pend.disputes + pend.sellers + pend.violations + pend.consignments; $('#bn').textContent = n; $('#bn').hidden = !n;
 }
 function showLogin(msg) { $('#shell').hidden = true; $('#login').hidden = false; $('#lerr').textContent = msg || ''; }
 async function ensureAdmin() {

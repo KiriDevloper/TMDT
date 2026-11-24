@@ -6,12 +6,14 @@ const { startOfDay, addDays, pct, series, countByDay } = require('../../services
 
 // Số việc đang chờ xử lý (chuông thông báo + huy hiệu menu)
 router.get('/pending', wrap(async (q, s) => {
-  const [products, disputes, sellers] = await Promise.all([
+  const [products, disputes, sellers, violations, consignments] = await Promise.all([
     db.product.count({ where: { status: 'PENDING' } }),
     db.dispute.count({ where: { status: 'OPEN' } }),
     db.user.count({ where: { shopStatus: 'pending', products: { some: {} } } }),
+    db.violation.count({ where: { status: 'OPEN' } }),
+    db.consignment.count({ where: { status: 'SUBMITTED' } }),
   ]);
-  s.json({ products, disputes, sellers });
+  s.json({ products, disputes, sellers, violations, consignments });
 }));
 
 router.get('/search', wrap(async (q, s) => {

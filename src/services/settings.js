@@ -6,6 +6,11 @@ const DEFAULTS = {
   holdHours: cfg.HOLD_MS / 3600e3,           // giờ giữ tiền / khiếu nại
   minImages: 4,
   bannedWords: 'fake,replica,super fake,nhái,f1',
+  shipDays: 3,                               // hạn người bán gửi hàng (ngày), quá hạn sàn tự hoàn tiền
+  newShopDays: 30,                           // thời gian ưu đãi hoa hồng cho người bán mới
+  newShopCommission: 0,                      // % hoa hồng trong thời gian ưu đãi
+  consignCommission: 25,                     // % hoa hồng hàng ký gửi
+  consignDays: 60,                           // thời hạn ký gửi (ngày)
   siteName: 'RE-WEAR',
   supportEmail: 'support@rewear.vn',
 };
@@ -23,4 +28,6 @@ const bannedRegex = st => {
   const w = st.bannedWords.split(',').map(x => x.trim()).filter(Boolean).map(x => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   return w.length ? new RegExp(w.join('|'), 'i') : null;
 };
-module.exports = { getSettings, saveSettings, bannedRegex, DEFAULTS };
+// Hoa hồng áp dụng cho một người bán (ưu đãi người bán mới)
+const sellerRate = (u, st) => (Date.now() - new Date(u.createdAt) < st.newShopDays * 864e5 ? st.newShopCommission : st.commission);
+module.exports = { sellerRate, getSettings, saveSettings, bannedRegex, DEFAULTS };
